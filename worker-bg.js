@@ -1,6 +1,7 @@
 // Runs Ghostscript (compiled to WebAssembly) once per worker instance.
-// Protocol: receives {target: "wasm", pdf: ArrayBuffer, preset}, replies with
+// Protocol: receives {target: "wasm", pdf: ArrayBuffer, preset, engineUrl}, replies with
 // {type: "status", stage} messages and finally {type: "done", pdf} or {type: "error", code, message}.
+import createGhostscript from "./gs-worker.js";
 
 // Ghostscript PDFSETTINGS: screen ~72 dpi images, ebook ~150 dpi, printer ~300 dpi
 const PRESETS = ["screen", "ebook", "printer"];
@@ -36,45 +37,47 @@ const isPdf = (bytes) =>
 // The spec allows junk before the header, readers accept it within the first 1 KB
 const hasPdfHeader = (bytes) => new TextDecoder("latin1").decode(bytes.subarray(0, 1024)).includes("%PDF-");
 
-function compress(input, preset) {
-  const stderr = [];
+async function compress(input, preset, engineUrl) {
+  const log = [];
 
-  self.Module = {
-    preRun: [
-      () => {
-        // preRun fires once the WASM engine is downloaded and instantiated
-        self.postMessage({ type: "status", stage: "compressing" });
-        self.Module.FS.writeFile("in.pdf", input);
-      },
-    ],
-    postRun: [
-      () => {
-        let output;
-        try {
-          output = self.Module.FS.readFile("out.pdf");
-        } catch {
-          output = null;
-        }
-        // Ghostscript exits successfully on unreadable input but writes an empty PDF, so check its log first
-        const log = stderr.join("\n");
-        if (/password/i.test(log)) {
-          fail("encrypted", "This PDF is password-protected.");
-        } else if (output && isPdf(output) && !/No pages will be processed/i.test(log)) {
-          done(output.slice().buffer);
-        } else {
-          fail("failed", log || "Ghostscript could not process this file.");
-        }
-      },
-    ],
-    onAbort: (reason) => fail("engine", String(reason ?? "Engine aborted")),
-    arguments: gsArgs(preset),
-    print: (text) => stderr.push(text),
-    printErr: (text) => stderr.push(text),
-    totalDependencies: 0,
-    noExitRuntime: 1,
-  };
+  self.postMessage({ type: "status", stage: "loading-engine" });
+  let gs;
+  try {
+    gs = await createGhostscript({
+      locateFile: (path) => (path.endsWith(".wasm") ? engineUrl : path),
+      print: (text) => log.push(text),
+      printErr: (text) => log.push(text),
+    });
+  } catch (e) {
+    fail("engine", String(e));
+    return;
+  }
 
-  import("./gs-worker.js").catch((e) => fail("engine", String(e)));
+  self.postMessage({ type: "status", stage: "compressing" });
+  gs.FS.writeFile("in.pdf", input);
+  try {
+    gs.callMain(gsArgs(preset));
+  } catch (e) {
+    // A non-zero exit can surface as a thrown ExitStatus; the log and output decide the result below
+    log.push(String(e));
+  }
+
+  let output = null;
+  try {
+    output = gs.FS.readFile("out.pdf");
+  } catch {
+    // no output written
+  }
+
+  // Ghostscript can exit successfully on unreadable input but write an empty PDF, so check its log first
+  const text = log.join("\n");
+  if (/password/i.test(text)) {
+    fail("encrypted", "This PDF is password-protected.");
+  } else if (output && isPdf(output) && !/No pages will be processed/i.test(text)) {
+    done(output.slice().buffer);
+  } else {
+    fail("failed", text || "Ghostscript could not process this file.");
+  }
 }
 
 self.addEventListener("unhandledrejection", (e) => fail("engine", String(e.reason)));
@@ -86,6 +89,5 @@ self.addEventListener("message", ({ data }) => {
     fail("not-pdf", "The file is not a valid PDF.");
     return;
   }
-  self.postMessage({ type: "status", stage: "loading-engine" });
-  compress(input, data.preset);
+  compress(input, data.preset, data.engineUrl);
 });

@@ -13,7 +13,8 @@ export class CompressionError extends Error {
   }
 }
 
-const ENGINE_URL = '/engine/ghostscript-v1.wasm';
+// Versioned file name: the engine is cached as immutable, so a new build must get a new URL
+const ENGINE_URL = '/engine/ghostscript-10.08.0.wasm';
 const TIMEOUT_MS = 5 * 60 * 1000;
 
 let prefetched = false;
@@ -57,7 +58,7 @@ export function compressPdf(
           finish(() => reject(new CompressionError('engine', e.message || 'The compression engine crashed.')));
         });
 
-        worker.postMessage({ target: 'wasm', pdf: input, preset }, [input]);
+        worker.postMessage({ target: 'wasm', pdf: input, preset, engineUrl: ENGINE_URL }, [input]);
       }),
   );
 }

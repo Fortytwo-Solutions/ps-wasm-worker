@@ -12,14 +12,15 @@ Pako is written by Andrey Tupitsin and Vitaly Puzrin and can be found [here](htt
 
 | File | Purpose |
 | --- | --- |
-| `gs-worker.wasm` | Ghostscript compiled to WebAssembly (unmodified build, see below) |
-| `gs-worker.js` | Emscripten loader for the WASM module |
+| `gs-worker.wasm` | Ghostscript 10.08.0 compiled to WebAssembly (built with `build/build.sh`) |
+| `gs-worker.js` | Emscripten-generated ES module exporting `createGhostscript()` (unmodified build output) |
 | `worker-bg.js` | Web Worker: runs Ghostscript on one PDF and reports progress, result or error |
 | `compress.ts` | Main-thread API: `compressPdf(file, { preset, onStage })` and `prefetchEngine()` |
+| `build/` | Build script and the WebAssembly architecture header used to compile Ghostscript |
 
 ## Usage
 
-Serve `gs-worker.wasm` at `/engine/ghostscript-v1.wasm` (or change `wasmBinaryFile` in `gs-worker.js`), then:
+Serve `gs-worker.wasm` at `/engine/ghostscript-10.08.0.wasm` (or change `ENGINE_URL` in `compress.ts`), then:
 
 ```ts
 import { compressPdf, CompressionError } from './compress';
@@ -41,13 +42,25 @@ Presets map to Ghostscript's `-dPDFSETTINGS`: `screen` (72 dpi images), `ebook` 
   producing an empty output file.
 - The worker reports its stage (`loading-engine`, `compressing`) and always ends with a result or an error message.
 - `worker-init.js` is replaced by `compress.ts`, which adds a timeout, typed error codes and engine prefetching.
-- `gs-worker.js` loads the WASM binary from the same origin (`/engine/ghostscript-v1.wasm`) instead of a CDN.
+- Ghostscript upgraded to 10.08.0 and built as an ES module factory (`-sMODULARIZE -sEXPORT_ES6`), so the worker
+  calls `createGhostscript()` and `callMain()` instead of relying on a global `Module` object.
+- The WASM binary is loaded from a URL passed in by the page (same origin on pdf-io.com) instead of a CDN.
+- `build/arch/wasm.h` (from ps-wasm) gains `ARCH_ALIGN_UINT64_T_MOD` and `ARCH_LOG2_SIZEOF_LONG_LONG`, which
+  Ghostscript 10.08 requires.
 
 ## Building the WASM binary
 
-`gs-worker.wasm` was built with the [`compile.sh`](https://github.com/ochachacha/ps-wasm/blob/master/compile.sh)
-script from ps-wasm, which downloads the Ghostscript source from
-[ArtifexSoftware/ghostpdl](https://github.com/ArtifexSoftware/ghostpdl) and compiles it with Emscripten.
+`gs-worker.js` and `gs-worker.wasm` are built from source with [`build/build.sh`](build/build.sh):
+
+```sh
+source /path/to/emsdk/emsdk_env.sh   # Emscripten SDK 6.0.13
+./build/build.sh
+```
+
+The script downloads the official Ghostscript 10.08.0 release from
+[ArtifexSoftware/ghostpdl-downloads](https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/tag/gs10080),
+verifies its SHA-512 checksum, and compiles it with the same configuration as ps-wasm's
+[`compile.sh`](https://github.com/ochachacha/ps-wasm/blob/master/compile.sh), plus an ES module output format.
 
 ## License
 
