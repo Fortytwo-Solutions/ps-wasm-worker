@@ -1,5 +1,5 @@
 // Runs Ghostscript (compiled to WebAssembly) once per worker instance.
-// Protocol: receives {target: "wasm", pdf: ArrayBuffer, preset, engineUrl}, replies with
+// Protocol: receives {target: "wasm", pdf: ArrayBuffer, preset, engine: WebAssembly.Module}, replies with
 // {type: "status", stage} messages and finally {type: "done", pdf} or {type: "error", code, message}.
 import createGhostscript from "./gs-worker.js";
 
@@ -37,14 +37,20 @@ const isPdf = (bytes) =>
 // The spec allows junk before the header, readers accept it within the first 1 KB
 const hasPdfHeader = (bytes) => new TextDecoder("latin1").decode(bytes.subarray(0, 1024)).includes("%PDF-");
 
-async function compress(input, preset, engineUrl) {
+async function compress(input, preset, engine) {
   const log = [];
 
-  self.postMessage({ type: "status", stage: "loading-engine" });
   let gs;
   try {
+    // The page downloads and compiles the engine once and passes it in, so the worker never fetches it
     gs = await createGhostscript({
-      locateFile: (path) => (path.endsWith(".wasm") ? engineUrl : path),
+      instantiateWasm: (imports, receiveInstance) => {
+        WebAssembly.instantiate(engine, imports).then(
+          (instance) => receiveInstance(instance, engine),
+          (e) => fail("engine", String(e)),
+        );
+        return {};
+      },
       print: (text) => log.push(text),
       printErr: (text) => log.push(text),
     });
@@ -89,5 +95,5 @@ self.addEventListener("message", ({ data }) => {
     fail("not-pdf", "The file is not a valid PDF.");
     return;
   }
-  compress(input, data.preset, data.engineUrl);
+  compress(input, data.preset, data.engine);
 });

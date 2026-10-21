@@ -27,7 +27,11 @@ Serve `gs-worker.wasm` at `/engine/ghostscript-10.08.0.wasm` (or change `ENGINE_
 import { compressPdf, CompressionError } from './compress';
 
 try {
-  const smaller = await compressPdf(file, { preset: 'ebook', onStage: (stage) => console.log(stage) });
+  const smaller = await compressPdf(file, {
+    preset: 'ebook',
+    onStage: (stage) => console.log(stage),
+    onEngineProgress: (fraction) => console.log(`engine ${Math.round(fraction * 100)}%`),
+  });
 } catch (e) {
   if (e instanceof CompressionError) console.log(e.code); // 'not-pdf' | 'encrypted' | 'failed' | 'engine' | 'timeout'
 }
@@ -42,10 +46,13 @@ Presets map to Ghostscript's `-dPDFSETTINGS`: `screen` (72 dpi images), `ebook` 
 - Input is checked for a PDF header; password-protected and unreadable PDFs are reported as errors instead of
   producing an empty output file.
 - The worker reports its stage (`loading-engine`, `compressing`) and always ends with a result or an error message.
-- `worker-init.js` is replaced by `compress.ts`, which adds a timeout, typed error codes and engine prefetching.
+- `worker-init.js` is replaced by `compress.ts`, which adds a timeout and typed error codes.
+- The page downloads the engine once (with progress reporting and stall detection), compiles it, and passes the
+  compiled `WebAssembly.Module` to each worker through Emscripten's `instantiateWasm` hook, so repeated compressions
+  neither download nor recompile it.
 - Ghostscript upgraded to 10.08.0 and built as an ES module factory (`-sMODULARIZE -sEXPORT_ES6`), so the worker
   calls `createGhostscript()` and `callMain()` instead of relying on a global `Module` object.
-- The WASM binary is loaded from a URL passed in by the page (same origin on pdf-io.com) instead of a CDN.
+- The WASM binary is served from the same origin as the page (`/engine/ghostscript-10.08.0.wasm`) instead of a CDN.
 - `build/arch/wasm.h` (from ps-wasm) gains `ARCH_ALIGN_UINT64_T_MOD` and `ARCH_LOG2_SIZEOF_LONG_LONG`, which
   Ghostscript 10.08 requires.
 

@@ -8,6 +8,11 @@ export interface GhostscriptModule {
 }
 
 export interface GhostscriptOptions {
+  /** Instantiate the engine yourself (e.g. from a precompiled module) instead of letting it fetch gs.wasm */
+  instantiateWasm?: (
+    imports: WebAssembly.Imports,
+    receiveInstance: (instance: WebAssembly.Instance, module: WebAssembly.Module) => void,
+  ) => object;
   locateFile?: (path: string, scriptDirectory: string) => string;
   print?: (text: string) => void;
   printErr?: (text: string) => void;
