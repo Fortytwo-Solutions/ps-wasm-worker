@@ -11,6 +11,8 @@ GS_VERSION="10.08.0"
 GS_RELEASE_TAG="gs10080"
 GS_SHA512="429f9b1eb85dc5a463468242fcd1de1dac015cac4195472a4d30a59b3c9baa7f6aeeb2ca22ee3f009631bcdae76fb52bc226e499a79b8bdad3167d3d538e8528"
 EMSCRIPTEN_VERSION="6.0.13"
+# Ghostscript embeds a build time; pin it to the release's own timestamp (2026-09-08) so builds are reproducible
+export SOURCE_DATE_EPOCH=1788856935
 
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(dirname "$here")"

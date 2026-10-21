@@ -14,6 +14,7 @@ Pako is written by Andrey Tupitsin and Vitaly Puzrin and can be found [here](htt
 | --- | --- |
 | `gs-worker.wasm` | Ghostscript 10.08.0 compiled to WebAssembly (built with `build/build.sh`) |
 | `gs-worker.js` | Emscripten-generated ES module exporting `createGhostscript()` (unmodified build output) |
+| `gs-worker.d.ts` | TypeScript types for `gs-worker.js` |
 | `worker-bg.js` | Web Worker: runs Ghostscript on one PDF and reports progress, result or error |
 | `compress.ts` | Main-thread API: `compressPdf(file, { preset, onStage })` and `prefetchEngine()` |
 | `build/` | Build script and the WebAssembly architecture header used to compile Ghostscript |
@@ -59,7 +60,7 @@ source /path/to/emsdk/emsdk_env.sh   # Emscripten SDK 6.0.13
 
 The script downloads the official Ghostscript 10.08.0 release from
 [ArtifexSoftware/ghostpdl-downloads](https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/tag/gs10080),
-verifies its SHA-512 checksum, and compiles it with the same configuration as ps-wasm's
+verifies its SHA-512 checksum, and compiles it reproducibly (the same inputs give a byte-identical binary) with the same configuration as ps-wasm's
 [`compile.sh`](https://github.com/ochachacha/ps-wasm/blob/master/compile.sh), plus an ES module output format.
 
 ## License
