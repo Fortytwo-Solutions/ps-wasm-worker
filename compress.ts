@@ -77,9 +77,16 @@ export async function compressPdf(
   file: Blob,
   {
     preset = 'ebook',
+    dpi,
     onStage,
     onEngineProgress,
-  }: { preset?: Preset; onStage?: (stage: Stage) => void; onEngineProgress?: (fraction: number) => void } = {},
+  }: {
+    preset?: Preset;
+    /** Downsample all images to this resolution and save them as JPEG, overriding the preset's image settings */
+    dpi?: number;
+    onStage?: (stage: Stage) => void;
+    onEngineProgress?: (fraction: number) => void;
+  } = {},
 ): Promise<Blob> {
   const input = await file.arrayBuffer();
   // Reject non-PDFs before waiting for the engine download (the worker checks again)
@@ -112,6 +119,6 @@ export async function compressPdf(
       finish(() => reject(new CompressionError('engine', e.message || 'The compression engine crashed.')));
     });
 
-    worker.postMessage({ target: 'wasm', pdf: input, preset, engine: engineModule }, [input]);
+    worker.postMessage({ target: 'wasm', pdf: input, preset, dpi, engine: engineModule }, [input]);
   });
 }

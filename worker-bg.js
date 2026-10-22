@@ -1,15 +1,41 @@
 // Runs Ghostscript (compiled to WebAssembly) once per worker instance.
-// Protocol: receives {target: "wasm", pdf: ArrayBuffer, preset, engine: WebAssembly.Module}, replies with
+// Protocol: receives {target: "wasm", pdf: ArrayBuffer, preset, dpi?, engine: WebAssembly.Module}, replies with
 // {type: "status", stage} messages and finally {type: "done", pdf} or {type: "error", code, message}.
 import createGhostscript from "./gs-worker.js";
 
 // Ghostscript PDFSETTINGS: screen ~72 dpi images, ebook ~150 dpi, printer ~300 dpi
 const PRESETS = ["screen", "ebook", "printer"];
 
-const gsArgs = (preset) => [
+// An explicit image resolution overrides the preset's: every colour and grey image above it is downsampled and saved
+// as JPEG (Ghostscript would otherwise sometimes choose a larger lossless encoding). Black-and-white images keep twice
+// the resolution so scanned text stays legible.
+const resolutionArgs = (dpi) => [
+  "-dDownsampleColorImages=true",
+  "-dDownsampleGrayImages=true",
+  "-dDownsampleMonoImages=true",
+  "-dColorImageDownsampleType=/Bicubic",
+  "-dGrayImageDownsampleType=/Bicubic",
+  "-dColorImageDownsampleThreshold=1.0",
+  "-dGrayImageDownsampleThreshold=1.0",
+  "-dMonoImageDownsampleThreshold=1.0",
+  `-dColorImageResolution=${dpi}`,
+  `-dGrayImageResolution=${dpi}`,
+  `-dMonoImageResolution=${dpi * 2}`,
+  "-dAutoFilterColorImages=false",
+  "-dAutoFilterGrayImages=false",
+  "-dColorImageFilter=/DCTEncode",
+  "-dGrayImageFilter=/DCTEncode",
+  "-dPassThroughJPEGImages=false",
+];
+
+const validDpi = (dpi) => Number.isInteger(dpi) && dpi >= 10 && dpi <= 600;
+
+const gsArgs = (preset, dpi) => [
   "-sDEVICE=pdfwrite",
   "-dCompatibilityLevel=1.4",
   `-dPDFSETTINGS=/${PRESETS.includes(preset) ? preset : "ebook"}`,
+  // Must come after PDFSETTINGS to override it
+  ...(validDpi(dpi) ? resolutionArgs(dpi) : []),
   "-dNOPAUSE",
   "-dQUIET",
   "-dBATCH",
@@ -37,7 +63,7 @@ const isPdf = (bytes) =>
 // The spec allows junk before the header, readers accept it within the first 1 KB
 const hasPdfHeader = (bytes) => new TextDecoder("latin1").decode(bytes.subarray(0, 1024)).includes("%PDF-");
 
-async function compress(input, preset, engine) {
+async function compress(input, preset, dpi, engine) {
   const log = [];
 
   let gs;
@@ -62,7 +88,7 @@ async function compress(input, preset, engine) {
   self.postMessage({ type: "status", stage: "compressing" });
   gs.FS.writeFile("in.pdf", input);
   try {
-    gs.callMain(gsArgs(preset));
+    gs.callMain(gsArgs(preset, dpi));
   } catch (e) {
     // A non-zero exit can surface as a thrown ExitStatus; the log and output decide the result below
     log.push(String(e));
@@ -95,5 +121,5 @@ self.addEventListener("message", ({ data }) => {
     fail("not-pdf", "The file is not a valid PDF.");
     return;
   }
-  compress(input, data.preset, data.engine);
+  compress(input, data.preset, data.dpi, data.engine);
 });
