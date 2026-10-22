@@ -39,10 +39,14 @@ try {
 
 Presets map to Ghostscript's `-dPDFSETTINGS`: `screen` (72 dpi images), `ebook` (150 dpi), `printer` (300 dpi).
 
+Pass `dpi` (10–600) to override the preset's image settings: every colour and grey image above that resolution is
+downsampled and saved as JPEG, black-and-white images keep twice the resolution. pdf-io.com uses this to fit a PDF
+under a file-size limit, trying resolutions from sharp to small.
+
 ## Modifications to ps-wasm
 
 - The PDF is transferred to the worker as an `ArrayBuffer` instead of being fetched again from an object URL.
-- Selectable quality preset (`screen`, `ebook`, `printer`).
+- Selectable quality preset (`screen`, `ebook`, `printer`), and an optional image resolution (`dpi`) that overrides it.
 - Input is checked for a PDF header; password-protected and unreadable PDFs are reported as errors instead of
   producing an empty output file.
 - The worker reports its stage (`loading-engine`, `compressing`) and always ends with a result or an error message.
